@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "SynthID Checker",
+  "version": "0.2.0",
+  "description": "Adds a button to images and videos that checks them for a SynthID watermark using synthid.com, and a button that downloads videos.",
+  "minimum_chrome_version": "111",
+  "background": {
+    "service_worker": "src/background.js",
+    "scripts": ["src/shared.js", "src/streams.js", "src/background.js"]
+  },
+  "permissions": ["storage", "webRequest", "downloads"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "exclude_matches": ["https://synthid.com/*"],
+      "js": ["src/shared.js", "src/content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.instagram.com/*", "https://*.threads.com/*", "https://*.threads.net/*"],
+      "js": ["src/meta-main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.instagram.com/*", "https://*.threads.com/*", "https://*.threads.net/*"],
+      "js": ["src/meta.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://synthid.com/*"],
+      "js": ["src/synthid-main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://synthid.com/*"],
+      "js": ["src/shared.js", "src/synthid-bridge.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "synthid-checker@local",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": ["websiteContent"]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "128.0"
+    }
+  }
+}
