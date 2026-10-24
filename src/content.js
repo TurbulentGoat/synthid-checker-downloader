@@ -234,7 +234,7 @@
   function label(state) {
     switch (state.status) {
       case 'idle':
-        return 'SynthID?';
+        return 'Check SynthID';
       case 'checking':
         return state.text || 'Checking…';
       case 'detected':
