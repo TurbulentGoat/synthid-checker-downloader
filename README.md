@@ -44,11 +44,6 @@ keep it installed, sign it as an unlisted add-on with
 If no buttons appear, go to `about:addons` → SynthID Checker → Permissions and allow access to
 all websites.
 
-**Firefox for Android:** run it from your computer with
-`npx web-ext run --target=firefox-android` (see the
-[Android guide](https://extensionworkshop.com/documentation/develop/developing-extensions-for-firefox-for-android/)),
-or install a signed copy.
-
 ## First run
 
 The first time you click a button, the extension opens synthid.com and brings it to the front
