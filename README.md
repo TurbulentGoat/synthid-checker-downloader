@@ -1,6 +1,6 @@
 # SynthID Checker
 
-A browser extension that puts a **SynthID?** button on images and videos. Click it and the
+A browser extension that puts a **SynthID** button on images and videos. Click it and the
 extension checks that file for a SynthID watermark on [synthid.com](https://synthid.com) in the
 background, then shows the result on the image:
 
