@@ -1,6 +1,7 @@
-// Page content script: shows a "SynthID?" button on images and videos, and a result badge
-// after a check. Videos also get a download button. With a mouse the buttons follow the hovered
-// media; on touch screens every visible image and video gets them.
+// Page content script: shows a "Check SynthID" button on images and videos, and a result badge
+// after a check. Videos also get a download button, and on Instagram a play/pause button. With a
+// mouse the buttons follow the hovered media; on touch screens every visible image and video gets
+// them.
 (() => {
   if (window.__synthidChecker) return;
   window.__synthidChecker = true;
@@ -9,7 +10,11 @@
   const MIN_SIZE = 80; // CSS px; skips icons, avatars and tracking pixels
   const touchOnly = matchMedia('(hover: none)').matches;
   const RETRYABLE = new Set(['error', 'signin', 'terms']);
+  const onInstagram = /(^|\.)instagram\.com$/.test(location.hostname);
   const SVG_NS = 'http://www.w3.org/2000/svg';
+  const PAUSE_ICON =
+    'M6.5 4A1.5 1.5 0 0 0 5 5.5v13A1.5 1.5 0 0 0 6.5 20h2a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 8.5 4zm9 0A1.5 1.5 0 0 0 14 5.5v13a1.5 1.5 0 0 0 1.5 1.5h2a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 4z';
+  const PLAY_ICON = 'M7 4.75v14.5a1 1 0 0 0 1.53.85l11.6-7.25a1 1 0 0 0 0-1.7L8.53 3.9A1 1 0 0 0 7 4.75z';
   const DOWNLOAD_ICON =
     'M12 2C12.5523 2 13 2.44772 13 3V13.5858L16.2929 10.2929C16.6834 9.90237 17.3166 9.90237 17.7071 10.2929C18.0976 10.6834 18.0976 11.3166 17.7071 11.7071L12.7071 16.7071C12.3166 17.0976 11.6834 17.0976 11.2929 16.7071L6.29289 11.7071C5.90237 11.3166 5.90237 10.6834 6.29289 10.2929C6.68342 9.90237 7.31658 9.90237 7.70711 10.2929L11 13.5858V3C11 2.44772 11.4477 2 12 2ZM4 17C4.55228 17 5 17.4477 5 18V20H19V18C19 17.4477 19.4477 17 20 17C20.5523 17 21 17.4477 21 18V20C21 21.1046 20.1046 22 19 22H5C3.89543 22 3 21.1046 3 20V18C3 17.4477 3.44772 17 4 17Z';
 
@@ -17,23 +22,39 @@
   host.style.cssText = 'all:initial;position:fixed;top:0;left:0;width:0;height:0;z-index:2147483647;pointer-events:none;';
   const shadow = host.attachShadow({ mode: 'closed' });
   const css = `
-    .item { position: fixed; top: 0; left: 0; display: none; align-items: flex-start; gap: 6px; }
-    .item.visible { display: flex; }
-    .badge, .save {
-      box-sizing: border-box; border: 0; border-radius: 5px; color: #fff;
-      background: rgba(32, 33, 36, 0.85); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    .item {
+      --size: 36px; --glyph: 18px; --font: 12px; --chip: rgba(18, 18, 18, 0.6);
+      position: fixed; top: 0; left: 0; display: none; align-items: flex-start; gap: 6px;
+    }
+    .item.visible { display: flex; animation: appear 0.15s ease-out; }
+    .item[data-layout="column"], .item[data-layout="outside"] { flex-direction: column; }
+    /* On the page rather than the media: solid, in Instagram's own dark grey. */
+    .item[data-layout="outside"] { align-items: flex-end; --chip: rgba(38, 38, 38, 0.94); }
+    .item[data-layout="compact"] { --size: 26px; --glyph: 14px; --font: 11px; gap: 4px; }
+    .touch .item { --size: 34px; --font: 13px; }
+    .touch .item[data-layout="compact"] { --size: 30px; --glyph: 16px; --font: 12px; }
+    .item[data-layout="compact"] .pause { display: none; }
+    @keyframes appear { from { opacity: 0; } }
+    .badge, .icon {
+      box-sizing: border-box; min-width: var(--size); min-height: var(--size); margin: 0;
+      border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 5px; color: #fff;
+      background: var(--chip); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+      -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
       cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent;
+      transition: box-shadow 0.15s;
     }
+    /* An inset shadow tints any background, including the result colours. */
+    .badge:hover, .icon:hover { box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.14), 0 1px 3px rgba(0, 0, 0, 0.25); }
+    .badge:focus-visible, .icon:focus-visible { outline: 2px solid #8ab4f8; outline-offset: 2px; }
     .badge {
-      display: inline-flex; align-items: center; gap: 6px; max-width: 240px; padding: 10px 10px;
-      font: 600 12px/16px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-align: left;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px; max-width: 240px;
+      padding: 0 10px; font: 600 var(--font)/16px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      text-align: left;
     }
-    .badge:hover, .save:hover { filter: brightness(1.15); }
-    .badge:focus-visible, .save:focus-visible { outline: 2px solid #8ab4f8; outline-offset: 2px; }
-    .touch .badge { padding: 7px 12px; font-size: 13px; }
-    .save { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; }
-    .touch .save { width: 30px; height: 30px; }
-    .save svg { width: 18px; height: 18px; }
+    .badge.short { padding: 0 4px; }
+    .badge.expanded { padding: 8px 10px; justify-content: flex-start; }
+    .icon { flex: none; display: grid; place-items: center; width: var(--size); height: var(--size); padding: 0; }
+    .icon svg { width: var(--glyph); height: var(--glyph); }
     .save[data-state="busy"] svg { animation: pulse 0.8s ease-in-out infinite; }
     .save[data-state="done"] { background: #137333; }
     .save[data-state="failed"] { background: #c5221f; }
@@ -57,7 +78,7 @@
     .detail { display: block; font-weight: 400; margin-top: 2px; }
     .spinner {
       flex: none; width: 10px; height: 10px; border: 2px solid rgba(255, 255, 255, 0.35);
-      border-top-color: #fff; border-radius: 5px; animation: spin 0.8s linear infinite;
+      border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
   `;
@@ -81,9 +102,15 @@
   shadow.append(layer);
   document.documentElement.append(host);
 
-  const badges = new Map(); // media element -> { el, button, save, state }
+  const badges = new Map(); // media element -> { el, button, save, pause, state, layout }
   const onScreen = new Set(); // touch mode: media currently in the viewport
   let hovered = null;
+  // Buttons outside the media (Instagram) mean the pointer briefly leaves it on the way there, so
+  // the media it just left keeps them for a moment, and gets them back if the pointer arrives.
+  const LINGER_MS = 800;
+  let leftMedia = null;
+  let leftAt = 0;
+  const lingering = (media) => media === leftMedia && performance.now() - leftAt < LINGER_MS;
 
   // ---- Which media get a button --------------------------------------------------------
 
@@ -97,7 +124,7 @@
   function shouldShow(media, badge) {
     if (!media.isConnected) return false;
     if (badge.state.status !== 'idle' || (badge.save && badge.save.dataset.state !== 'idle')) return true;
-    return media === hovered || (touchOnly && onScreen.has(media));
+    return media === hovered || lingering(media) || (touchOnly && onScreen.has(media));
   }
 
   if (touchOnly) {
@@ -139,37 +166,75 @@
   // elementsFromPoint also finds media covered by transparent overlays, which many sites use.
   function updateHovered(x, y) {
     const stack = document.elementsFromPoint(x, y);
-    if (stack[0] === host) return; // pointer is on one of our badges; keep the current target
+    if (stack[0] === host) {
+      // The pointer is on one of our buttons: keep the current target, or win back the last one.
+      if (!hovered && lingering(leftMedia)) setHovered(leftMedia);
+      return;
+    }
     setHovered(stack.find((el) => isMedia(el) && bigEnough(el)) ?? null);
   }
 
   function setHovered(media) {
     if (media === hovered) return;
+    leftMedia = media ? null : hovered;
+    leftAt = performance.now();
+    if (leftMedia) setTimeout(scheduleUpdate, LINGER_MS);
     hovered = media;
     scheduleUpdate();
   }
 
   // ---- Badge rendering and positioning --------------------------------------------------
 
+  // Small media such as search-result thumbnails get a compact row in the corner. On Instagram the
+  // buttons go in a column outside the media's left edge, clear of the post. When they don't fit
+  // there (a full-width video on a phone, or an opened result in a narrow margin) they go inside,
+  // below the header Instagram draws over posts. Elsewhere, a row near the top right.
+  const PLACEMENT = {
+    row: { edge: 'right', top: 70, inset: 8 },
+    outside: { edge: 'outside', top: 0, inset: 8 },
+    column: { edge: 'left', top: 64, inset: 10 },
+    compact: { edge: 'right', top: 6, inset: 6 },
+  };
+
+  // `width` is the buttons' current width, which is the same in either column layout.
+  function layoutFor(rect, width) {
+    if (rect.width < 320 || rect.height < 220) return 'compact';
+    if (!onInstagram) return 'row';
+    return rect.left - width >= 2 * PLACEMENT.outside.inset ? 'outside' : 'column';
+  }
+
+  function setLayout(badge, layout) {
+    if (badge.layout === layout) return;
+    badge.layout = layout;
+    badge.el.dataset.layout = layout;
+    render(badge);
+  }
+
   function badgeFor(media) {
     let badge = badges.get(media);
     if (badge) return badge;
     const el = document.createElement('div');
     el.className = 'item';
-    badge = { el, button: makeButton('badge', () => onBadgeClick(media, badge)), save: null, state: { status: 'idle' } };
+    badge = { el, button: makeButton('badge', () => onBadgeClick(media, badge)), save: null, pause: null, state: { status: 'idle' }, layout: null };
+    // Instagram's feed has no pause control: the video sits inside a link to the post.
+    if (onInstagram && media instanceof HTMLVideoElement) {
+      badge.pause = makeButton('icon pause', () => onPauseClick(media));
+      renderPause(badge.pause, media);
+      el.append(badge.pause);
+    }
     // Videos also get a download button, to keep the file or upload it to synthid.com yourself.
     if (media instanceof HTMLVideoElement) {
-      badge.save = makeButton('save', (e) => onSaveClick(media, badge.save, e.shiftKey));
+      badge.save = makeButton('icon save', (e) => onSaveClick(media, badge.save, e.shiftKey));
       badge.save.dataset.state = 'idle';
       badge.save.setAttribute('aria-label', 'Download video');
       badge.save.title = globalThis.SynthIDMeta ? 'Download video (Shift+click: every video in the post)' : 'Download video';
-      badge.save.append(downloadIcon());
+      badge.save.append(svgIcon(DOWNLOAD_ICON));
       el.append(badge.save);
     }
     el.append(badge.button);
     badges.set(media, badge);
     layer.append(el);
-    render(badge);
+    setLayout(badge, layoutFor(media.getBoundingClientRect(), 0)); // measured once it's shown
     return badge;
   }
 
@@ -188,12 +253,12 @@
     return button;
   }
 
-  function downloadIcon() {
+  function svgIcon(pathData) {
     const svg = document.createElementNS(SVG_NS, 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS(SVG_NS, 'path');
-    path.setAttribute('d', DOWNLOAD_ICON);
+    path.setAttribute('d', pathData);
     path.setAttribute('fill', 'currentColor');
     svg.append(path);
     return svg;
@@ -208,7 +273,11 @@
     scheduleUpdate();
   }
 
-  function render({ button: el, state }) {
+  function render({ button: el, state, layout }) {
+    // Thumbnails and Instagram's column only have room for a short label. The full one is in the
+    // tooltip, and shows when a result is opened.
+    const short = layout !== 'row' && !el.classList.contains('expanded');
+    el.classList.toggle('short', short);
     el.dataset.status = state.status;
     el.replaceChildren();
     if (state.status === 'checking') {
@@ -216,17 +285,20 @@
       spinner.className = 'spinner';
       el.append(spinner);
     }
-    const text = document.createElement('span');
-    text.className = 'text';
-    text.textContent = label(state);
+    const shown = short ? shortLabel(state) : label(state);
     const detail = describe(state);
-    if (detail && el.classList.contains('expanded')) {
-      const line = document.createElement('span');
-      line.className = 'detail';
-      line.textContent = detail;
-      text.append(line);
+    if (shown) {
+      const text = document.createElement('span');
+      text.className = 'text';
+      text.textContent = shown;
+      if (detail && el.classList.contains('expanded')) {
+        const line = document.createElement('span');
+        line.className = 'detail';
+        line.textContent = detail;
+        text.append(line);
+      }
+      el.append(text);
     }
-    el.append(text);
     el.title = detail || label(state);
     el.setAttribute('aria-label', detail ? `${label(state)}. ${detail}` : label(state));
   }
@@ -251,6 +323,25 @@
         return 'Accept synthid.com terms';
       default:
         return 'Check failed';
+    }
+  }
+
+  function shortLabel(state) {
+    switch (state.status) {
+      case 'idle':
+        return 'S.ID';
+      case 'checking':
+        return ''; // just the spinner; the step is in the tooltip
+      case 'detected':
+        return 'S.ID found';
+      case 'not_detected':
+        return 'No S.ID';
+      case 'uncertain':
+        return 'S.ID unsure';
+      case 'inconclusive':
+        return 'Can’t tell';
+      default:
+        return label(state); // problems are always shown in full
     }
   }
 
@@ -314,13 +405,14 @@
         continue;
       }
       badge.el.classList.add('visible');
-      const inset = 8;
-      const topOffset = 70;
+      setLayout(badge, layoutFor(rect, badge.el.offsetWidth));
+      const { edge, top, inset } = PLACEMENT[badge.layout];
       const width = badge.el.offsetWidth;
       const height = badge.el.offsetHeight;
-      // Near the top-right corner of the media, kept on screen while the media is partly scrolled away.
-      const x = Math.max(inset, Math.min(rect.right - width - inset, innerWidth - width - inset));
-      const y = Math.min(Math.max(rect.top + topOffset, inset), Math.max(rect.bottom - height - inset, inset));
+      const along = { right: rect.right - width - inset, left: rect.left + inset, outside: rect.left - width - inset }[edge];
+      // Kept on screen, and level with the media while it's partly scrolled away.
+      const x = Math.max(inset, Math.min(along, innerWidth - width - inset));
+      const y = Math.min(Math.max(rect.top + top, inset), Math.max(rect.bottom - height - inset, inset));
       badge.el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
     }
   }
@@ -430,6 +522,56 @@
       } catch {}
     }
     throw new Error('Couldn’t download this file.');
+  }
+
+  // ---- Pausing Instagram videos ---------------------------------------------------------
+
+  // Instagram restarts feed videos whenever it decides they're in view, so a video paused here
+  // stays paused until it's started by a tap or key press: on our button or Instagram's player.
+  const held = new WeakSet();
+  let lastGesture = -Infinity;
+
+  if (onInstagram) {
+    // pointerup, not pointerdown: a touch that turns into a scroll ends in pointercancel instead.
+    for (const type of ['pointerup', 'keydown']) {
+      addEventListener(
+        type,
+        (e) => {
+          if (e.isTrusted && e.target !== host) lastGesture = performance.now();
+        },
+        true,
+      );
+    }
+    // Media events don't bubble, but a capturing listener on the document still sees them.
+    const onPlayback = (e) => {
+      const video = e.target;
+      if (!(video instanceof HTMLVideoElement)) return;
+      if (e.type === 'play' && held.has(video)) {
+        if (performance.now() - lastGesture < 1000) held.delete(video);
+        else video.pause();
+      }
+      const button = badges.get(video)?.pause;
+      if (button) renderPause(button, video);
+    };
+    document.addEventListener('play', onPlayback, true);
+    document.addEventListener('pause', onPlayback, true);
+  }
+
+  function onPauseClick(video) {
+    if (video.paused) {
+      held.delete(video);
+      video.play().catch(() => {});
+    } else {
+      held.add(video);
+      video.pause();
+    }
+  }
+
+  function renderPause(button, video) {
+    const label = video.paused ? 'Play video' : 'Pause video';
+    button.replaceChildren(svgIcon(video.paused ? PLAY_ICON : PAUSE_ICON));
+    button.setAttribute('aria-label', label);
+    button.title = label;
   }
 
   // ---- Downloading a video --------------------------------------------------------------

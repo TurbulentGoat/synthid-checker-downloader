@@ -13,9 +13,23 @@ background, then shows the result on the image:
 | **Check failed** / **Sign in** / **Accept terms** (grey) | Something needs attention. Click to retry. |
 
 Videos also get a **download** button next to it (see [Downloading videos](#downloading-videos)).
+On Instagram they get a **play/pause** button too, since tapping a feed video opens the post
+instead of pausing it. A video you pause stays paused, even though Instagram would normally
+restart it, until you press play on that button or in Instagram's own player.
 
 With a mouse, the buttons appear on whatever image or video you hover over. On touch screens they
-appear on every visible image and video.
+appear on every visible image and video. They sit near the top right, except:
+
+- **Small images and videos** (under 320 × 220, such as search-result thumbnails) get smaller
+  buttons in the corner, labelled **S.ID**, and no pause button.
+- **Instagram** puts them in a column just outside the left edge of the post, also labelled
+  **S.ID**. Where there's no room (a full-width video on a phone), they go inside the post,
+  below its header.
+
+Short labels show results briefly (**S.ID found**, **No S.ID**). Click one for the full
+explanation.
+
+The extension is turned off on YouTube.
 
 ## Before you use it
 
@@ -77,8 +91,8 @@ extension downloads the file itself and saves it through the page.
   video play for a moment first. Only the video track is checked, because Meta stores the sound
   in a separate file. Facebook often serves AV1 video, and it's unconfirmed whether synthid.com
   accepts that codec.
-- Other streaming sites (YouTube, Twitch and so on) aren't supported for checks or downloads, and
-  show "streamed in pieces".
+- Other streaming sites (Twitch and so on) aren't supported for checks or downloads, and show
+  "streamed in pieces". On YouTube the extension doesn't run at all.
 - Files over 100 MB are rejected by synthid.com. Downloads have no size limit.
 - Only images and videos in the top-level page get buttons, not ones inside iframes.
 - It relies on how synthid.com's page works today: its file input, its `detection_result`
