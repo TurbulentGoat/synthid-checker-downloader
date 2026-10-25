@@ -1,8 +1,8 @@
 # SynthID Checker
 
-A browser extension that puts a **SynthID** button on images and videos. Click it and the
-extension checks that file for a SynthID watermark on [synthid.com](https://synthid.com) in the
-background, then shows the result on the image:
+A browser extension that puts a **SynthID** button on images, videos, audio players and links to
+files synthid.com can check. Click it and the extension checks that file for a SynthID watermark
+on [synthid.com](https://synthid.com) in the background, then shows the result beside it:
 
 | Badge | Meaning |
 | --- | --- |
@@ -13,18 +13,26 @@ background, then shows the result on the image:
 | **Check failed** / **Sign in** / **Accept terms** (grey) | Something needs attention. Click to retry. |
 
 Videos also get a **download** button next to it (see [Downloading videos](#downloading-videos)).
-On Instagram they get a **play/pause** button too, since tapping a feed video opens the post
-instead of pausing it. A video you pause stays paused, even though Instagram would normally
-restart it, until you press play on that button or in Instagram's own player.
+On Instagram and Facebook they get a **play/pause** button too, since tapping an Instagram feed
+video opens the post instead of pausing it. A video you pause stays paused, even though both
+sites normally restart videos as you scroll, until you press play on that button or in the
+site's own player.
 
-With a mouse, the buttons appear on whatever image or video you hover over. On touch screens they
-appear on every visible image and video. They sit near the top right, except:
+With a mouse, the buttons appear on whatever you hover over. On touch screens they appear on
+everything visible. On images and videos they sit near the top right, except:
 
 - **Small images and videos** (under 320 × 220, such as search-result thumbnails) get smaller
   buttons in the corner, labelled **S.ID**, and no pause button.
-- **Instagram** puts them in a column just outside the left edge of the post, also labelled
-  **S.ID**. Where there's no room (a full-width video on a phone), they go inside the post,
-  below its header.
+- **Instagram and Facebook** put them in a column just outside the left edge of the post's
+  photo or video, also labelled **S.ID**. Where there's no room (a full-width video on a phone),
+  they go inside it: below the header on Instagram, which draws it over the photo, and near the
+  top on Facebook.
+- **Audio players**, and **links straight to a file synthid.com can check** (images, video and
+  audio, such as `.jpg`, `.mp4` or `.mp3`), get a small **S.ID** button just after them. A link
+  around an image is left to the image's own button. In running text, the button sits over the
+  next word or two.
+
+SVG images get no button, because synthid.com can't check them.
 
 Short labels show results briefly (**S.ID found**, **No S.ID**). Click one for the full
 explanation.

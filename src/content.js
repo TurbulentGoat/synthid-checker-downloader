@@ -1,16 +1,25 @@
 // Page content script: shows a "Check SynthID" button on images and videos, and a result badge
-// after a check. Videos also get a download button, and on Instagram a play/pause button. With a
-// mouse the buttons follow the hovered media; on touch screens every visible image and video gets
-// them.
+// after a check. Videos also get a download button, and on Instagram and Facebook a play/pause
+// button. With a mouse the buttons follow the hovered media; on touch screens every visible image
+// and video gets them.
 (() => {
   if (window.__synthidChecker) return;
   window.__synthidChecker = true;
 
   const { api, sendBlob, createBlobReceiver, sniffMediaType, fileName, timestamp } = globalThis.SynthIDShared;
   const MIN_SIZE = 80; // CSS px; skips icons, avatars and tracking pixels
+  // File types synthid.com accepts, as listed by its upload box.
+  const CHECKABLE = /\.(jpe?g|png|bmp|webp|avif|hei[cf]|tiff?|gif|wav|mp3|ogg|flac|aac|m4a|mp4|mov|webm)$/i;
   const touchOnly = matchMedia('(hover: none)').matches;
   const RETRYABLE = new Set(['error', 'signin', 'terms']);
-  const onInstagram = /(^|\.)instagram\.com$/.test(location.hostname);
+  // Social feeds get a column of buttons beside each post, and a pause button. `insideTop` is
+  // where the column starts when it has to go inside the media: Instagram draws its post header
+  // over the top of photos and videos, Facebook puts it above them.
+  const FEEDS = [
+    { host: /(^|\.)instagram\.com$/, insideTop: 64 },
+    { host: /(^|\.)facebook\.com$/, insideTop: 10 },
+  ];
+  const feed = FEEDS.find((site) => site.host.test(location.hostname));
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const PAUSE_ICON =
     'M6.5 4A1.5 1.5 0 0 0 5 5.5v13A1.5 1.5 0 0 0 6.5 20h2a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 8.5 4zm9 0A1.5 1.5 0 0 0 14 5.5v13a1.5 1.5 0 0 0 1.5 1.5h2a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 4z';
@@ -28,12 +37,15 @@
     }
     .item.visible { display: flex; animation: appear 0.15s ease-out; }
     .item[data-layout="column"], .item[data-layout="outside"] { flex-direction: column; }
-    /* On the page rather than the media: solid, in Instagram's own dark grey. */
+    /* On the page rather than the media: solid, in the dark grey of the sites' own text. */
     .item[data-layout="outside"] { align-items: flex-end; --chip: rgba(38, 38, 38, 0.94); }
     .item[data-layout="compact"] { --size: 26px; --glyph: 14px; --font: 11px; gap: 4px; }
     .touch .item { --size: 34px; --font: 13px; }
     .touch .item[data-layout="compact"] { --size: 30px; --glyph: 16px; --font: 12px; }
     .item[data-layout="compact"] .pause { display: none; }
+    /* Beside a line of text: no taller than it. */
+    .item[data-layout="inline"] { --size: 20px; --font: 10px; }
+    .touch .item[data-layout="inline"] { --size: 26px; --font: 11px; }
     @keyframes appear { from { opacity: 0; } }
     .badge, .icon {
       box-sizing: border-box; min-width: var(--size); min-height: var(--size); margin: 0;
@@ -45,7 +57,7 @@
     }
     /* An inset shadow tints any background, including the result colours. */
     .badge:hover, .icon:hover { box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.14), 0 1px 3px rgba(0, 0, 0, 0.25); }
-    .badge:focus-visible, .icon:focus-visible { outline: 2px solid #8ab4f8; outline-offset: 2px; }
+    .badge:focus-visible, .icon:focus-visible { outline: 2px solid #8ab4f8; outline-offset: 2px; } 
     .badge {
       display: inline-flex; align-items: center; justify-content: center; gap: 6px; max-width: 240px;
       padding: 0 10px; font: 600 var(--font)/16px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -105,7 +117,7 @@
   const badges = new Map(); // media element -> { el, button, save, pause, state, layout }
   const onScreen = new Set(); // touch mode: media currently in the viewport
   let hovered = null;
-  // Buttons outside the media (Instagram) mean the pointer briefly leaves it on the way there, so
+  // Buttons outside the media (social feeds) mean the pointer briefly leaves it on the way there, so
   // the media it just left keeps them for a moment, and gets them back if the pointer arrives.
   const LINGER_MS = 800;
   let leftMedia = null;
@@ -119,6 +131,26 @@
   function bigEnough(el) {
     const rect = el.getBoundingClientRect();
     return rect.width >= MIN_SIZE && rect.height >= MIN_SIZE;
+  }
+
+  // A link straight to a file synthid.com can check. One wrapping an image or video is left to
+  // that media's own button.
+  function isCheckableLink(el) {
+    return (
+      el instanceof HTMLAnchorElement &&
+      /^https?:$/.test(el.protocol) &&
+      CHECKABLE.test(el.pathname) &&
+      !el.querySelector('img, video, picture, canvas')
+    );
+  }
+
+  // Images and videos big enough to be content (not SVG, which synthid.com can't check), audio
+  // players, and links to checkable files.
+  function wantsButton(el) {
+    if (isMedia(el)) return bigEnough(el) && !/^data:image\/svg|\.svg([?#]|$)/i.test(mediaSource(el));
+    if (!(el instanceof HTMLAudioElement) && !isCheckableLink(el)) return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
   }
 
   function shouldShow(media, badge) {
@@ -135,9 +167,10 @@
       }
       scheduleUpdate();
     });
+    const observe = (el) => (isMedia(el) || el instanceof HTMLAudioElement || isCheckableLink(el)) && observer.observe(el);
     const observeAll = (root) => {
-      if (isMedia(root)) observer.observe(root);
-      root.querySelectorAll?.('img, video').forEach((el) => observer.observe(el));
+      observe(root);
+      root.querySelectorAll?.('img, video, audio, a[href]').forEach(observe);
     };
     observeAll(document);
     new MutationObserver((records) => {
@@ -171,7 +204,25 @@
       if (!hovered && lingering(leftMedia)) setHovered(leftMedia);
       return;
     }
-    setHovered(stack.find((el) => isMedia(el) && bigEnough(el)) ?? null);
+    if (hovered && betweenMediaAndButtons(hovered, x, y)) return;
+    const media = stack.find((el) => isMedia(el) && wantsButton(el));
+    const other = stack[0]?.closest?.('audio, a[href]');
+    setHovered(media ?? (other && wantsButton(other) ? other : null));
+  }
+
+  // Buttons beside the media (feeds, links) leave a gap that may have other media under it, such as
+  // a neighbouring story. Outside the media but within the box around it and its buttons, the
+  // pointer still counts as on it.
+  function betweenMediaAndButtons(media, x, y) {
+    const item = badges.get(media)?.el;
+    if (!item?.classList.contains('visible')) return false;
+    const m = media.getBoundingClientRect();
+    if (x >= m.left && x <= m.right && y >= m.top && y <= m.bottom) return false;
+    const b = item.getBoundingClientRect();
+    return (
+      x >= Math.min(m.left, b.left) && x <= Math.max(m.right, b.right) &&
+      y >= Math.min(m.top, b.top) && y <= Math.max(m.bottom, b.bottom)
+    );
   }
 
   function setHovered(media) {
@@ -185,21 +236,24 @@
 
   // ---- Badge rendering and positioning --------------------------------------------------
 
-  // Small media such as search-result thumbnails get a compact row in the corner. On Instagram the
-  // buttons go in a column outside the media's left edge, clear of the post. When they don't fit
-  // there (a full-width video on a phone, or an opened result in a narrow margin) they go inside,
-  // below the header Instagram draws over posts. Elsewhere, a row near the top right.
+  // Small media such as search-result thumbnails get a compact row in the corner. On social feeds
+  // the buttons go in a column outside the media's left edge, clear of the post. When they don't
+  // fit there (a full-width video on a phone, or an opened result in a narrow margin) they go
+  // inside, clear of anything the site draws over the media. Elsewhere, a row near the top right.
+  // Links and audio players get a small button just after them.
   const PLACEMENT = {
     row: { edge: 'right', top: 70, inset: 8 },
     outside: { edge: 'outside', top: 0, inset: 8 },
-    column: { edge: 'left', top: 64, inset: 10 },
+    column: { edge: 'left', top: feed?.insideTop ?? 64, inset: 10 },
     compact: { edge: 'right', top: 6, inset: 6 },
+    inline: { inset: 4 },
   };
 
   // `width` is the buttons' current width, which is the same in either column layout.
-  function layoutFor(rect, width) {
+  function layoutFor(target, rect, width) {
+    if (!isMedia(target)) return 'inline';
     if (rect.width < 320 || rect.height < 220) return 'compact';
-    if (!onInstagram) return 'row';
+    if (!feed) return 'row';
     return rect.left - width >= 2 * PLACEMENT.outside.inset ? 'outside' : 'column';
   }
 
@@ -216,8 +270,9 @@
     const el = document.createElement('div');
     el.className = 'item';
     badge = { el, button: makeButton('badge', () => onBadgeClick(media, badge)), save: null, pause: null, state: { status: 'idle' }, layout: null };
-    // Instagram's feed has no pause control: the video sits inside a link to the post.
-    if (onInstagram && media instanceof HTMLVideoElement) {
+    // Instagram's feed has no pause control (a video sits inside a link to its post), and both
+    // feeds restart videos as you scroll. This one keeps them paused.
+    if (feed && media instanceof HTMLVideoElement) {
       badge.pause = makeButton('icon pause', () => onPauseClick(media));
       renderPause(badge.pause, media);
       el.append(badge.pause);
@@ -234,7 +289,7 @@
     el.append(badge.button);
     badges.set(media, badge);
     layer.append(el);
-    setLayout(badge, layoutFor(media.getBoundingClientRect(), 0)); // measured once it's shown
+    setLayout(badge, layoutFor(media, media.getBoundingClientRect(), 0)); // measured once it's shown
     return badge;
   }
 
@@ -274,7 +329,7 @@
   }
 
   function render({ button: el, state, layout }) {
-    // Thumbnails and Instagram's column only have room for a short label. The full one is in the
+    // Thumbnails and the feeds' column only have room for a short label. The full one is in the
     // tooltip, and shows when a result is opened.
     const short = layout !== 'row' && !el.classList.contains('expanded');
     el.classList.toggle('short', short);
@@ -329,15 +384,15 @@
   function shortLabel(state) {
     switch (state.status) {
       case 'idle':
-        return 'S.ID';
+        return 'SynthID';
       case 'checking':
         return ''; // just the spinner; the step is in the tooltip
       case 'detected':
-        return 'S.ID found';
+        return 'Watermark found';
       case 'not_detected':
-        return 'No S.ID';
+        return 'No watermark';
       case 'uncertain':
-        return 'S.ID unsure';
+        return 'Watermark unsure';
       case 'inconclusive':
         return 'Can’t tell';
       default:
@@ -388,7 +443,7 @@
     frame = 0;
     if (hovered && !hovered.isConnected) hovered = null;
     if (hovered) badgeFor(hovered);
-    if (touchOnly) onScreen.forEach((media) => bigEnough(media) && badgeFor(media));
+    if (touchOnly) onScreen.forEach((media) => wantsButton(media) && badgeFor(media));
 
     for (const [media, badge] of badges) {
       // Idle buttons are recreated on demand; results stay until the media leaves the page.
@@ -405,14 +460,23 @@
         continue;
       }
       badge.el.classList.add('visible');
-      setLayout(badge, layoutFor(rect, badge.el.offsetWidth));
+      setLayout(badge, layoutFor(media, rect, badge.el.offsetWidth));
       const { edge, top, inset } = PLACEMENT[badge.layout];
       const width = badge.el.offsetWidth;
       const height = badge.el.offsetHeight;
-      const along = { right: rect.right - width - inset, left: rect.left + inset, outside: rect.left - width - inset }[edge];
-      // Kept on screen, and level with the media while it's partly scrolled away.
-      const x = Math.max(inset, Math.min(along, innerWidth - width - inset));
-      const y = Math.min(Math.max(rect.top + top, inset), Math.max(rect.bottom - height - inset, inset));
+      let x;
+      let y;
+      if (badge.layout === 'inline') {
+        // Just after the link's last line (or the audio player), centred on it.
+        const line = [...media.getClientRects()].pop() ?? rect;
+        x = Math.max(inset, Math.min(line.right + inset, innerWidth - width - inset));
+        y = Math.max(inset, Math.min(line.top + (line.height - height) / 2, innerHeight - height - inset));
+      } else {
+        const along = { right: rect.right - width - inset, left: rect.left + inset, outside: rect.left - width - inset }[edge];
+        // Kept on screen, and level with the media while it's partly scrolled away.
+        x = Math.max(inset, Math.min(along, innerWidth - width - inset));
+        y = Math.min(Math.max(rect.top + top, inset), Math.max(rect.bottom - height - inset, inset));
+      }
       badge.el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
     }
   }
@@ -425,6 +489,7 @@
   // ---- Running a check ------------------------------------------------------------------
 
   function mediaSource(media) {
+    if (media instanceof HTMLAnchorElement) return media.href;
     if (media instanceof HTMLImageElement) return media.currentSrc || media.src;
     return media.currentSrc || media.src || media.querySelector('source[src]')?.src || '';
   }
@@ -524,14 +589,14 @@
     throw new Error('Couldn’t download this file.');
   }
 
-  // ---- Pausing Instagram videos ---------------------------------------------------------
+  // ---- Pausing feed videos --------------------------------------------------------------
 
-  // Instagram restarts feed videos whenever it decides they're in view, so a video paused here
-  // stays paused until it's started by a tap or key press: on our button or Instagram's player.
+  // Instagram and Facebook restart feed videos whenever they decide they're in view, so a video
+  // paused here stays paused until it's started by a tap or key press: on our button or the site's.
   const held = new WeakSet();
   let lastGesture = -Infinity;
 
-  if (onInstagram) {
+  if (feed) {
     // pointerup, not pointerdown: a touch that turns into a scroll ends in pointercancel instead.
     for (const type of ['pointerup', 'keydown']) {
       addEventListener(
