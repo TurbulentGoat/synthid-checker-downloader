@@ -22,20 +22,21 @@ With a mouse, the buttons appear on whatever you hover over. On touch screens th
 everything visible. On images and videos they sit near the top right, except:
 
 - **Small images and videos** (under 320 × 220, such as search-result thumbnails) get smaller
-  buttons in the corner, labelled **S.ID**, and no pause button.
+  buttons in the corner, labelled **SynthID**, and no pause button.
 - **Instagram and Facebook** put them in a column just outside the left edge of the post's
-  photo or video, also labelled **S.ID**. Where there's no room (a full-width video on a phone),
+  photo or video, also labelled **SynthID**. Where there's no room (a full-width video on a phone),
   they go inside it: below the header on Instagram, which draws it over the photo, and near the
   top on Facebook.
 - **Audio players**, and **links straight to a file synthid.com can check** (images, video and
-  audio, such as `.jpg`, `.mp4` or `.mp3`), get a small **S.ID** button just after them. A link
+  audio, such as `.jpg`, `.mp4` or `.mp3`), get a small **SynthID** button just after them. A link
   around an image is left to the image's own button. In running text, the button sits over the
   next word or two.
 
 SVG images get no button, because synthid.com can't check them.
 
-Short labels show results briefly (**S.ID found**, **No S.ID**). Click one for the full
-explanation.
+Short labels show results briefly (**Watermark found**, **No watermark**). Click one for the
+full explanation. A result stays beside its image or video until that leaves the page, and is
+hidden while something the site opens over the page, such as a larger player, covers it.
 
 The extension is turned off on YouTube.
 

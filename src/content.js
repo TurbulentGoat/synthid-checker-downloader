@@ -205,10 +205,40 @@
       return;
     }
     if (hovered && betweenMediaAndButtons(hovered, x, y)) return;
-    const media = stack.find((el) => isMedia(el) && wantsButton(el));
+    const media = stack.find((el) => isMedia(el) && wantsButton(el) && uncovered(stack, el));
     const other = stack[0]?.closest?.('audio, a[href]');
     setHovered(media ?? (other && wantsButton(other) ? other : null));
   }
+
+  // Whether anything in `stack` (the elements at one point, topmost first) hides the media: part of a
+  // layer fixed over the page that the media isn't in, like the larger player a feed opens, and
+  // spanning all of the media's visible part. Sites' own controls and captions over media aren't.
+  function uncovered(stack, media) {
+    let visible = null;
+    for (const el of stack) {
+      if (el === media) return true;
+      if (el === host || el.contains(media)) continue;
+      visible ??= visiblePart(media.getBoundingClientRect());
+      const r = el.getBoundingClientRect();
+      const spans = r.left <= visible.left + 1 && r.top <= visible.top + 1 && r.right >= visible.right - 1 && r.bottom >= visible.bottom - 1;
+      if (spans && inOtherFixedLayer(el, media)) return false;
+    }
+    return true;
+  }
+
+  function inOtherFixedLayer(el, media) {
+    for (let node = el; node && node !== document.body; node = node.parentElement) {
+      if (getComputedStyle(node).position === 'fixed') return !node.contains(media);
+    }
+    return false;
+  }
+
+  const visiblePart = (rect) => ({
+    left: Math.max(rect.left, 0),
+    top: Math.max(rect.top, 0),
+    right: Math.min(rect.right, innerWidth),
+    bottom: Math.min(rect.bottom, innerHeight),
+  });
 
   // Buttons beside the media (feeds, links) leave a gap that may have other media under it, such as
   // a neighbouring story. Outside the media but within the box around it and its buttons, the
@@ -455,7 +485,7 @@
       }
       const rect = media.getBoundingClientRect();
       const offscreen = rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth;
-      if (offscreen || rect.width === 0) {
+      if (offscreen || rect.width === 0 || hidden(media, rect)) {
         badge.el.classList.remove('visible');
         continue;
       }
@@ -479,6 +509,12 @@
       }
       badge.el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
     }
+  }
+
+  // Covered at the middle of its visible part, e.g. by the site's own player opened over the feed.
+  function hidden(media, rect) {
+    const area = visiblePart(media instanceof HTMLAnchorElement ? ([...media.getClientRects()].pop() ?? rect) : rect);
+    return !uncovered(document.elementsFromPoint((area.left + area.right) / 2, (area.top + area.bottom) / 2), media);
   }
 
   addEventListener('scroll', scheduleUpdate, { capture: true, passive: true });
