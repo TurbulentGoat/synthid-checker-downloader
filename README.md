@@ -107,7 +107,7 @@ extension downloads the file itself and saves it through the page.
 | `src/background.js` | Downloads the media (`<all_urls>` permission avoids CORS), works out its real type from its first bytes, queues checks and manages the synthid.com tab. Saves downloads with the `downloads` API. |
 | `src/meta-main.js` | On Instagram and Threads, in the page's own context: reads the video file URLs (`video_versions`) out of the site's API responses, without changing them, and answers lookups by post. |
 | `src/meta.js` | On Instagram and Threads: works out which post a `<video>` belongs to and gets its file from `meta-main.js`. |
-| `src/synthid-bridge.js` | On synthid.com: puts the file into the site's own `<input type=file>` and waits for the outcome. Stops if you need to sign in or accept the terms. |
+| `src/synthid-bridge.js` | On synthid.com: puts the file into the site's own `<input type=file>` and waits for the outcome. Stops if you need to sign in or accept the terms. For video and audio it first plays a silent, blank stream, because Chrome won't load media in a hidden tab that hasn't played any, and synthid.com only sends a video once its preview has loaded. |
 | `src/synthid-main.js` | Runs in synthid.com's page context: relays the site's `detection_result` analytics events and Firebase sign-in state to the bridge. |
 | `src/streams.js` | Finds the file behind a Facebook/Instagram stream: records the CDN files the tab requests (`webRequest`), then reads the start of each to match track type and duration. |
 | `src/shared.js` | Chunked file transfer between scripts, file-type sniffing and download file names. |

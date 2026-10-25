@@ -82,6 +82,7 @@
     const newEvent = (...names) => events.slice(firstEvent).find((e) => names.includes(e.name));
     const onDetectionPage = () => /-detection$/.test(location.pathname);
 
+    if (kind !== 'image') await primeMedia();
     const transfer = new DataTransfer();
     transfer.items.add(file);
     input.files = transfer.files;
@@ -105,6 +106,24 @@
     );
     await sleep(500); // let the page render its confidence text, which describe() reads
     return describe(outcome);
+  }
+
+  // synthid.com only sends a video or audio file once its preview player has loaded it, and Chrome
+  // won't load media in a hidden tab (this one) until the tab has played some. A stream counts as
+  // played and is never held back itself, so play a blank, silent 1×1 one for a moment: nothing is
+  // shown, heard or fetched.
+  async function primeMedia() {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    canvas.getContext('2d').fillRect(0, 0, 1, 1);
+    const stream = canvas.captureStream?.(1);
+    if (!stream) return;
+    const player = document.createElement('video');
+    player.muted = true;
+    player.srcObject = stream;
+    await Promise.race([player.play().catch(() => {}), sleep(3000)]);
+    stream.getTracks().forEach((track) => track.stop());
+    player.srcObject = null;
   }
 
   function describe(outcome) {
